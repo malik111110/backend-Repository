@@ -3,12 +3,12 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import Session, select
 
 from app.database import get_session
-from app.auth import get_password_hash, verify_password, create_access_token
-from app.models import User, UserCreate, UserRead, Token, DonorProfile
+from app.auth import get_password_hash, verify_password, create_access_token, get_current_user
+from app.models import User, UserCreate, DonorProfile
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
-@router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+@router.post("/register", status_code=status.HTTP_201_CREATED)
 def register(user_data: UserCreate, session: Session = Depends(get_session)):
     # Check if user already exists
     statement = select(User).where(User.email == user_data.email)
@@ -33,8 +33,14 @@ def register(user_data: UserCreate, session: Session = Depends(get_session)):
             )
             
     # Create user
-    # If the email is admin@amal.org, automatically make them an admin for easy setup
-    role = "admin" if user_data.email.lower() == "admin@amal.org" else "user"
+    # Assign role based on email or account type
+    if user_data.email.lower() == "admin@amal.org":
+        role = "admin"
+    elif not user_data.is_donor:
+        # Non-donors are hospital admins
+        role = "admin_hopital"
+    else:
+        role = "user"
     
     db_user = User(
         email=user_data.email,
@@ -59,9 +65,20 @@ def register(user_data: UserCreate, session: Session = Depends(get_session)):
         session.add(db_donor)
         session.commit()
         
-    return db_user
+    return {
+        "success": True,
+        "data": {
+            "id": db_user.id,
+            "email": db_user.email,
+            "full_name": db_user.full_name,
+            "phone_number": db_user.phone_number,
+            "role": db_user.role,
+            "created_at": db_user.created_at.isoformat()
+        },
+        "message": "User registered successfully"
+    }
 
-@router.post("/login", response_model=Token)
+@router.post("/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), session: Session = Depends(get_session)):
     statement = select(User).where(User.email == form_data.username)
     user = session.exec(statement).first()
@@ -73,4 +90,27 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), session: Session = D
         )
         
     access_token = create_access_token(data={"sub": user.email, "role": user.role})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "success": True,
+        "data": {
+            "access_token": access_token,
+            "token_type": "bearer"
+        },
+        "message": "Login successful"
+    }
+
+@router.get("/me")
+def get_current_user_profile(current_user: User = Depends(get_current_user)):
+    """Get current logged-in user profile"""
+    return {
+        "success": True,
+        "data": {
+            "id": current_user.id,
+            "email": current_user.email,
+            "full_name": current_user.full_name,
+            "phone_number": current_user.phone_number,
+            "role": current_user.role,
+            "created_at": current_user.created_at.isoformat()
+        },
+        "message": "Profile retrieved successfully"
+    }

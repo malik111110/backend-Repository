@@ -33,7 +33,7 @@ def test_prescreen_logic():
             session=session
         )
         
-        assert resp_fail["cleared"] is False
+        assert resp_fail["data"]["cleared"] is False
         assert "Pre-screening failed" in resp_fail["message"]
         
         # Verify donor details are updated
@@ -57,10 +57,10 @@ def test_prescreen_logic():
             session=session
         )
         
-        assert resp_pass["cleared"] is True
-        assert resp_pass["health_clearance_token"] is not None
+        assert resp_pass["data"]["cleared"] is True
+        assert resp_pass["data"]["health_clearance_token"] is not None
         
         # Verify donor is now cleared
         session.refresh(donor)
-        assert donor.health_clearance_token == resp_pass["health_clearance_token"]
+        assert donor.health_clearance_token == resp_pass["data"]["health_clearance_token"]
         assert donor.is_available is True

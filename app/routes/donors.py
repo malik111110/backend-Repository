@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from app.database import get_session
 from app.auth import get_current_user
-from app.models import User, DonorProfile, DonationSchedule, DonationScheduleRead, DonationScheduleCreate, BloodRequest, Invitation, InvitationRead, InvitationResponse, PreScreenQuestionnaire
+from app.models import User, DonorProfile, DonationSchedule, DonationScheduleCreate, BloodRequest, Invitation, InvitationResponse, PreScreenQuestionnaire
 from datetime import datetime, timedelta, timezone
 
 router = APIRouter(prefix="/api/donations", tags=["Donations & Donors"])
@@ -24,7 +24,11 @@ def get_current_donor_profile(
 
 @router.get("/profile")
 def get_donor_profile(donor: DonorProfile = Depends(get_current_donor_profile)):
-    return donor
+    return {
+        "success": True,
+        "data": donor,
+        "message": "Donor profile loaded successfully"
+    }
 
 @router.patch("/profile/availability")
 def update_availability(
@@ -36,18 +40,26 @@ def update_availability(
     session.add(donor)
     session.commit()
     session.refresh(donor)
-    return donor
+    return {
+        "success": True,
+        "data": donor,
+        "message": "Availability status updated successfully"
+    }
 
-@router.get("/my-appointments", response_model=List[DonationScheduleRead])
+@router.get("/my-appointments")
 def get_my_appointments(
     donor: DonorProfile = Depends(get_current_donor_profile),
     session: Session = Depends(get_session)
 ):
     statement = select(DonationSchedule).where(DonationSchedule.donor_id == donor.id)
     appointments = session.exec(statement).all()
-    return appointments
+    return {
+        "success": True,
+        "data": appointments,
+        "message": "My appointments loaded successfully"
+    }
 
-@router.post("/schedule", response_model=DonationScheduleRead, status_code=status.HTTP_201_CREATED)
+@router.post("/schedule", status_code=status.HTTP_201_CREATED)
 def schedule_appointment(
     schedule_data: DonationScheduleCreate,
     donor: DonorProfile = Depends(get_current_donor_profile),
@@ -109,10 +121,13 @@ def schedule_appointment(
             
     session.commit()
     session.refresh(new_schedule)
-    return new_schedule
+    return {
+        "success": True,
+        "data": new_schedule,
+        "message": "Appointment scheduled successfully"
+    }
 
-
-@router.get("/invitations", response_model=List[InvitationRead])
+@router.get("/invitations")
 def get_my_invitations(
     donor: DonorProfile = Depends(get_current_donor_profile),
     session: Session = Depends(get_session)
@@ -122,8 +137,12 @@ def get_my_invitations(
         Invitation.donor_id == donor.id,
         Invitation.status.in_(["pending", "queued"])
     )
-    return session.exec(statement).all()
-
+    invitations = session.exec(statement).all()
+    return {
+        "success": True,
+        "data": invitations,
+        "message": "My invitations loaded successfully"
+    }
 
 @router.post("/invitations/{invitation_id}/respond")
 def respond_to_invitation(
@@ -207,8 +226,19 @@ def respond_to_invitation(
         session.commit()
         session.refresh(schedule)
         return {
-            "message": "Invitation accepted successfully. Appointment scheduled.",
-            "schedule": schedule
+            "success": True,
+            "data": {
+                "message": "Invitation accepted successfully. Appointment scheduled.",
+                "schedule": {
+                    "id": schedule.id,
+                    "donor_id": schedule.donor_id,
+                    "request_id": schedule.request_id,
+                    "scheduled_time": schedule.scheduled_time.isoformat(),
+                    "status": schedule.status,
+                    "created_at": schedule.created_at.isoformat()
+                }
+            },
+            "message": "Invitation accepted successfully"
         }
     else:
         # Donor declined the request
@@ -241,8 +271,11 @@ def respond_to_invitation(
                 )
         
         session.commit()
-        return {"message": "Invitation declined. Cascaded matching to the next candidate."}
-
+        return {
+            "success": True,
+            "data": None,
+            "message": "Invitation declined. Cascaded matching to the next candidate."
+        }
 
 @router.post("/profile/pre-screen")
 def submit_pre_screen_questionnaire(
@@ -274,9 +307,12 @@ def submit_pre_screen_questionnaire(
         session.commit()
         session.refresh(donor)
         return {
-            "cleared": False,
-            "message": "Pre-screening failed. Critical risk factor flagged. Eligibility is temporarily blocked and donor availability set to unavailable.",
-            "health_checked_at": now
+            "success": True,
+            "data": {
+                "cleared": False,
+                "health_checked_at": now.isoformat()
+            },
+            "message": "Pre-screening failed. Critical risk factor flagged. Eligibility is temporarily blocked and donor availability set to unavailable."
         }
     else:
         token = f"clearance_{uuid.uuid4()}"
@@ -286,10 +322,11 @@ def submit_pre_screen_questionnaire(
         session.commit()
         session.refresh(donor)
         return {
-            "cleared": True,
-            "message": "Pre-screening passed successfully. Health clearance token generated.",
-            "health_clearance_token": token,
-            "health_checked_at": now
+            "success": True,
+            "data": {
+                "cleared": True,
+                "health_clearance_token": token,
+                "health_checked_at": now.isoformat()
+            },
+            "message": "Pre-screening passed successfully. Health clearance token generated."
         }
-
-

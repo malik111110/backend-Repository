@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, date, timezone
-from typing import Optional, List
+from typing import Optional, List, Generic, TypeVar, Any
+# pyrefly: ignore [missing-import]
 from sqlmodel import SQLModel, Field, Relationship
 
 # ==========================================
@@ -172,4 +173,44 @@ class InvitationRead(SQLModel):
 
 class InvitationResponse(SQLModel):
     accepted: bool
+
+
+# ==========================================
+# 6. STANDARDIZED API RESPONSE MODELS
+# ==========================================
+
+T = TypeVar('T')
+
+class ApiResponse(Generic[T], SQLModel):
+    success: bool
+    data: Optional[T] = None
+    message: Optional[str] = None
+    error: Optional[str] = None
+
+
+# ==========================================
+# 7. TEAM MEMBER MODELS
+# ==========================================
+
+class TeamMemberBase(SQLModel):
+    first_name: str
+    last_name: str
+    role: str
+    department: str
+    email: str = Field(unique=True, index=True)
+    phone: str
+    shift: str
+    status: str = Field(default="pending")  # "active" or "pending"
+
+class TeamMember(TeamMemberBase, table=True):
+    id: str = Field(default_factory=lambda: f"tm-{uuid.uuid4().hex[:8]}", primary_key=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+class TeamMemberCreate(TeamMemberBase):
+    pass
+
+class TeamMemberRead(TeamMemberBase):
+    id: str
+    created_at: datetime
+
 
