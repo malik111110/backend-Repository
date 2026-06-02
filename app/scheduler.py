@@ -69,8 +69,53 @@ def is_donor_eligible(donor: DonorProfile) -> bool:
 
 
 # ==========================================
-# 4. MATCHING ENGINE & AUTO-SCHEDULER
+# 4. MATCHING ENGINE & AUTO-SCHEDULER (PostGIS & SQLite fallback)
 # ==========================================
+
+from sqlalchemy import func
+
+def get_compatible_nearby_donors(session: Session, request_blood_type: str, hospital_lat: float, hospital_lon: float) -> List[tuple[DonorProfile, float]]:
+    """
+    Returns a sorted list of compatible, eligible nearby donors with their distances.
+    Supports SQLite fallback for local testing and PostGIS for production environments.
+    """
+    if settings.DATABASE_URL.startswith("sqlite"):
+        statement = select(DonorProfile).where(DonorProfile.is_available == True)
+        all_donors = session.exec(statement).all()
+        eligible_donors = [d for d in all_donors if is_donor_eligible(d)]
+        matches = []
+        for donor in eligible_donors:
+            if not is_blood_compatible(donor.blood_type, request_blood_type):
+                continue
+            dist = calculate_distance(
+                donor.latitude, donor.longitude,
+                hospital_lat, hospital_lon
+            )
+            if dist <= settings.MATCH_RADIUS_KM:
+                matches.append((donor, dist))
+    else:
+        allowed_donors = list(COMPATIBILITY_MAP.get(request_blood_type, set()))
+        statement = select(DonorProfile).where(
+            DonorProfile.is_available == True,
+            DonorProfile.blood_type.in_(allowed_donors),
+            func.ST_DistanceSphere(
+                func.ST_MakePoint(DonorProfile.longitude, DonorProfile.latitude),
+                func.ST_MakePoint(hospital_lon, hospital_lat)
+            ) <= (settings.MATCH_RADIUS_KM * 1000.0)
+        )
+        donors_in_radius = session.exec(statement).all()
+        eligible_donors = [d for d in donors_in_radius if is_donor_eligible(d)]
+        matches = []
+        for donor in eligible_donors:
+            dist = calculate_distance(
+                donor.latitude, donor.longitude,
+                hospital_lat, hospital_lon
+            )
+            matches.append((donor, dist))
+            
+    matches.sort(key=lambda x: x[1])
+    return matches
+
 
 def match_and_invite_for_request(session: Session, request: BloodRequest) -> int:
     """
@@ -84,28 +129,15 @@ def match_and_invite_for_request(session: Session, request: BloodRequest) -> int
     if existing_invs:
         return 0
 
-    # 1. Fetch eligible donors
-    statement = select(DonorProfile).where(DonorProfile.is_available == True)
-    all_donors = session.exec(statement).all()
-    eligible_donors = [d for d in all_donors if is_donor_eligible(d)]
+    # 1. Fetch closest compatible eligible donors using helper
+    matches = get_compatible_nearby_donors(
+        session,
+        request.blood_type,
+        request.hospital_latitude,
+        request.hospital_longitude
+    )
 
-    # 2. Match based on compatibility & location
-    matches = []
-    for donor in eligible_donors:
-        if not is_blood_compatible(donor.blood_type, request.blood_type):
-            continue
-            
-        dist = calculate_distance(
-            donor.latitude, donor.longitude,
-            request.hospital_latitude, request.hospital_longitude
-        )
-        if dist <= settings.MATCH_RADIUS_KM:
-            matches.append((donor, dist))
-
-    # 3. Sort closest first
-    matches.sort(key=lambda x: x[1])
-    
-    # 4. Queue top 5 donors
+    # 2. Queue top 5 donors
     top_matches = matches[:5]
     invitations_created = 0
     now = datetime.now()
@@ -145,23 +177,13 @@ def match_and_schedule_for_request(session: Session, request: BloodRequest) -> L
     Finds the best eligible donors for a specific request and schedules them directly.
     Returns the list of scheduled appointments created. (Used for non-critical/regular flow)
     """
-    statement = select(DonorProfile).where(DonorProfile.is_available == True)
-    all_donors = session.exec(statement).all()
-    eligible_donors = [d for d in all_donors if is_donor_eligible(d)]
-    
-    matches = []
-    for donor in eligible_donors:
-        if not is_blood_compatible(donor.blood_type, request.blood_type):
-            continue
-            
-        dist = calculate_distance(
-            donor.latitude, donor.longitude,
-            request.hospital_latitude, request.hospital_longitude
-        )
-        if dist <= settings.MATCH_RADIUS_KM:
-            matches.append((donor, dist))
-            
-    matches.sort(key=lambda x: x[1])
+    # Fetch compatible nearby donors
+    matches = get_compatible_nearby_donors(
+        session,
+        request.blood_type,
+        request.hospital_latitude,
+        request.hospital_longitude
+    )
     
     schedules_statement = select(DonationSchedule).where(
         DonationSchedule.request_id == request.id,

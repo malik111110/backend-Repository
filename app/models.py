@@ -5,6 +5,24 @@ from typing import Optional, List, Generic, TypeVar, Any
 from sqlmodel import SQLModel, Field, Relationship
 
 # ==========================================
+# 0. HOSPITAL MODELS
+# ==========================================
+
+class HospitalBase(SQLModel):
+    name: str
+    address: Optional[str] = None
+    region: str
+    phone: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    osm_id: Optional[str] = Field(default=None, unique=True, index=True, nullable=True)
+    facility_type: Optional[str] = None
+
+class Hospital(HospitalBase, table=True):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+# ==========================================
 # 1. USER MODELS
 # ==========================================
 
@@ -18,6 +36,12 @@ class User(UserBase, table=True):
     hashed_password: str
     role: str = Field(default="user")  # "admin" or "user"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    
+    # Profile fields (alignment with Supabase profile table)
+    first_name: Optional[str] = Field(default=None)
+    last_name: Optional[str] = Field(default=None)
+    region: Optional[str] = Field(default=None)
+    hopital_id: Optional[str] = Field(default=None, foreign_key="hospital.id", nullable=True)
     
     # Relationships
     donor_profile: Optional["DonorProfile"] = Relationship(back_populates="user", sa_relationship_kwargs={"uselist": False})
@@ -98,6 +122,7 @@ class BloodRequestBase(SQLModel):
 class BloodRequest(BloodRequestBase, table=True):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     created_by_id: str = Field(foreign_key="user.id")
+    hopital_id: Optional[str] = Field(default=None, foreign_key="hospital.id", nullable=True)
     status: str = Field(default="pending")  # "pending", "partially_fulfilled", "fulfilled", "cancelled"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     

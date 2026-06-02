@@ -143,27 +143,12 @@ graph TD
 
 ### 12. Mobile Pre-Screening Questionnaire (Story 12)
 * **Goal**: Conduct pre-screen checkups on user phones to eliminate walk-in clinic rejection rates.
-* **Database Models**: [DonorProfile](file:///Users/digitalcenter/Amal/app/models.py#L57) (with `health_clearance_token` and `health_checked_at` fields).
-* **API Handler**: [submit_pre_screen_questionnaire](file:///Users/digitalcenter/Amal/app/routes/donors.py#L246) (`POST /api/donations/profile/pre-screen`).
+* **Database Models**: Add `health_clearance_token` and `health_checked_at` fields to `donor_profiles`.
+* **API Handler**: `POST /api/donations/profile/pre-screen` and update `GET /api/donations/profile`.
 * **Implementation Tasks**:
-  * [x] Add database storage fields to [DonorProfileBase](file:///Users/digitalcenter/Amal/app/models.py#L50) schema to log clearance tokens and checking times.
-  * [x] Implement screening route logic checking questionnaire responses in [donors.py](file:///Users/digitalcenter/Amal/app/routes/donors.py#L246). If any risk is flagged, eligibility is blocked and donor availability set to `False`.
+  * [ ] Add database migration fields to schema to log health token clearance.
+  * [ ] Implement screening route logic checking questionnaire responses. If any critical risk is flagged, temporarily block eligibility and update donor availability status.
 
 ---
 
-### 13. Emergency Pass & Navigation Route Guidance (Story 13)
-* **Goal**: Offer live GPS navigation routes and priority passes inside the donor mobile app.
-* **Database Models**: [DonationSchedule](file:///Users/digitalcenter/Amal/app/models.py#L116) linked to [BloodRequest](file:///Users/digitalcenter/Amal/app/models.py#L87).
-* **API Handler**: `GET /api/donations/my-appointments` (providing GPS details).
-* **Implementation Tasks**:
-  * [ ] Expose target hospital coordinates (latitude, longitude) inside the schedule responses.
-  * [ ] Generate a cryptographic JWT priority token (acting as the Emergency Priority Pass) which when scanned verify appointment authenticity.
 
----
-
-### 14. Digital QR Code Fast-Track Check-In (Story 14)
-* **Goal**: Check in verified donors instantly using QR code scanning at the blood bank desk.
-* **Database Models**: [DonationSchedule](file:///Users/digitalcenter/Amal/app/models.py#L116).
-* **API Handler**: `PATCH /api/admin/appointments/{appointment_id}/check-in` (transitioning status to `"arrived"`).
-* **Implementation Tasks**:
-  * [ ] Create check-in API route that verifies the scanned token, checks pre-screening pass values, and transitions schedule status to `"arrived"`.
