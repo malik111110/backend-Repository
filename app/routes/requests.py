@@ -95,22 +95,25 @@ def get_eligible_donors_count_for_request(
             detail="You do not have permission to view details for this request."
         )
         
-    # Query all active donor profiles
-    statement = select(DonorProfile).where(DonorProfile.is_available == True)
-    donors = session.exec(statement).all()
+    # Query all active compatible donor profiles
+    from app.scheduler import get_compatible_nearby_donors, COMPATIBILITY_MAP
     
-    compatible_count = 0
-    nearby_compatible_count = 0
+    allowed_donors = list(COMPATIBILITY_MAP.get(req.blood_type, set()))
+    global_statement = select(DonorProfile).where(
+        DonorProfile.is_available == True,
+        DonorProfile.blood_type.in_(allowed_donors)
+    )
+    all_compatible = session.exec(global_statement).all()
+    compatible_count = len([d for d in all_compatible if is_donor_eligible(d)])
     
-    for donor in donors:
-        if is_donor_eligible(donor) and is_blood_compatible(donor.blood_type, req.blood_type):
-            compatible_count += 1
-            dist = calculate_distance(
-                donor.latitude, donor.longitude,
-                req.hospital_latitude, req.hospital_longitude
-            )
-            if dist <= settings.MATCH_RADIUS_KM:
-                nearby_compatible_count += 1
+    # Use spatial query for nearby compatible count
+    matches = get_compatible_nearby_donors(
+        session,
+        req.blood_type,
+        req.hospital_latitude,
+        req.hospital_longitude
+    )
+    nearby_compatible_count = len(matches)
                 
     return {
         "request_id": request_id,

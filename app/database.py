@@ -1,4 +1,4 @@
-from sqlmodel import create_engine, SQLModel, Session
+from sqlmodel import create_engine, SQLModel, Session, text
 from app.config import settings
 
 connect_args = {}
@@ -8,6 +8,11 @@ if settings.DATABASE_URL.startswith("sqlite"):
 engine = create_engine(settings.DATABASE_URL, connect_args=connect_args)
 
 def init_db():
+    # Create the PostGIS extension if using a PostgreSQL backend
+    if not settings.DATABASE_URL.startswith("sqlite"):
+        with Session(engine) as session:
+            session.exec(text("CREATE EXTENSION IF NOT EXISTS postgis;"))
+            session.commit()
     # Create the tables in the database
     # Imported models will be registered here
     import app.models  # noqa: F401
