@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import Session, select
 
 from app.database import get_session
-from app.auth import get_password_hash, verify_password, create_access_token
+from app.auth import get_password_hash, verify_password, create_access_token, get_current_user
 from app.models import User, UserCreate, UserRead, Token, DonorProfile
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
@@ -74,3 +74,74 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), session: Session = D
         
     access_token = create_access_token(data={"sub": user.email, "role": user.role})
     return {"access_token": access_token, "token_type": "bearer"}
+
+@router.get("/me")
+def get_me(current_user: User = Depends(get_current_user)):
+    return {
+        "id": current_user.id,
+        "role": current_user.role,
+        "first_name": current_user.first_name or current_user.full_name.split(" ")[0],
+        "last_name": current_user.last_name or (" ".join(current_user.full_name.split(" ")[1:]) if len(current_user.full_name.split(" ")) > 1 else ""),
+        "email": current_user.email,
+        "phone": current_user.phone_number,
+        "region": current_user.region,
+        "hopital_id": current_user.hopital_id,
+        "latitude": getattr(current_user.donor_profile, "latitude", None) if current_user.donor_profile else None,
+        "longitude": getattr(current_user.donor_profile, "longitude", None) if current_user.donor_profile else None
+    }
+
+from pydantic import BaseModel
+from typing import Optional
+
+class ProfileUpdate(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone: Optional[str] = None
+    birth_date: Optional[str] = None
+    blood_type: Optional[str] = None
+    wilaya: Optional[str] = None
+
+@router.patch("/profile")
+def update_profile(
+    profile_data: ProfileUpdate,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    if profile_data.first_name is not None:
+        current_user.first_name = profile_data.first_name
+    if profile_data.last_name is not None:
+        current_user.last_name = profile_data.last_name
+    if profile_data.phone is not None:
+        current_user.phone_number = profile_data.phone
+    if profile_data.wilaya is not None:
+        current_user.region = profile_data.wilaya
+    
+    # If they have a donor profile, update their blood_type
+    if profile_data.blood_type is not None:
+        if current_user.donor_profile:
+            current_user.donor_profile.blood_type = profile_data.blood_type
+            session.add(current_user.donor_profile)
+        
+    # Re-calculate full_name if first_name/last_name are modified
+    first = current_user.first_name or ""
+    last = current_user.last_name or ""
+    if first or last:
+        current_user.full_name = f"{first} {last}".strip()
+        
+    session.add(current_user)
+    session.commit()
+    session.refresh(current_user)
+    
+    return {
+        "id": current_user.id,
+        "role": current_user.role,
+        "first_name": current_user.first_name or current_user.full_name.split(" ")[0],
+        "last_name": current_user.last_name or (" ".join(current_user.full_name.split(" ")[1:]) if len(current_user.full_name.split(" ")) > 1 else ""),
+        "email": current_user.email,
+        "phone": current_user.phone_number,
+        "region": current_user.region,
+        "hopital_id": current_user.hopital_id,
+        "latitude": getattr(current_user.donor_profile, "latitude", None) if current_user.donor_profile else None,
+        "longitude": getattr(current_user.donor_profile, "longitude", None) if current_user.donor_profile else None
+    }
+

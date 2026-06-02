@@ -17,6 +17,37 @@ def init_db():
     # Imported models will be registered here
     import app.models  # noqa: F401
     SQLModel.metadata.create_all(engine)
+    
+    # Auto-seed Hospital table if empty
+    from app.models import Hospital
+    with Session(engine) as session:
+        count = session.query(Hospital).count()
+        if count == 0:
+            import json
+            import pathlib
+            json_path = pathlib.Path(__file__).parent / "hopitals-osm.json"
+            if json_path.exists():
+                print(f"Auto-seeding hospitals table from {json_path}...")
+                with open(json_path, "r", encoding="utf-8") as f:
+                    hospitals_data = json.load(f)
+                
+                hospitals_to_insert = []
+                for item in hospitals_data:
+                    hospital = Hospital(
+                        name=item.get("name"),
+                        address=item.get("address"),
+                        region=item.get("region"),
+                        phone=item.get("phone"),
+                        latitude=item.get("latitude"),
+                        longitude=item.get("longitude"),
+                        osm_id=item.get("osm_id"),
+                        facility_type=item.get("facility_type")
+                    )
+                    hospitals_to_insert.append(hospital)
+                
+                session.add_all(hospitals_to_insert)
+                session.commit()
+                print(f"Successfully seeded {len(hospitals_to_insert)} hospitals.")
 
 def get_session():
     with Session(engine) as session:
