@@ -4,11 +4,11 @@ from sqlmodel import Session, select
 
 from app.database import get_session
 from app.auth import get_password_hash, verify_password, create_access_token, get_current_user
-from app.models import User, UserCreate, UserRead, Token, DonorProfile
+from app.models import User, UserCreate, DonorProfile
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
-@router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+@router.post("/register", status_code=status.HTTP_201_CREATED)
 def register(user_data: UserCreate, session: Session = Depends(get_session)):
     # Check if user already exists
     statement = select(User).where(User.email == user_data.email)
@@ -33,8 +33,14 @@ def register(user_data: UserCreate, session: Session = Depends(get_session)):
             )
             
     # Create user
-    # If the email is admin@amal.org, automatically make them an admin for easy setup
-    role = "admin_hopital" if user_data.email.lower() == "admin@amal.org" else "user"
+    # Assign role based on email or account type
+    if user_data.email.lower() == "admin@amal.org":
+        role = "admin"
+    elif not user_data.is_donor:
+        # Non-donors are hospital admins
+        role = "admin_hopital"
+    else:
+        role = "user"
     
     db_user = User(
         email=user_data.email,
@@ -59,9 +65,20 @@ def register(user_data: UserCreate, session: Session = Depends(get_session)):
         session.add(db_donor)
         session.commit()
         
-    return db_user
+    return {
+        "success": True,
+        "data": {
+            "id": db_user.id,
+            "email": db_user.email,
+            "full_name": db_user.full_name,
+            "phone_number": db_user.phone_number,
+            "role": db_user.role,
+            "created_at": db_user.created_at.isoformat()
+        },
+        "message": "User registered successfully"
+    }
 
-@router.post("/login", response_model=Token)
+@router.post("/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), session: Session = Depends(get_session)):
     statement = select(User).where(User.email == form_data.username)
     user = session.exec(statement).first()
@@ -73,75 +90,27 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), session: Session = D
         )
         
     access_token = create_access_token(data={"sub": user.email, "role": user.role})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "success": True,
+        "data": {
+            "access_token": access_token,
+            "token_type": "bearer"
+        },
+        "message": "Login successful"
+    }
 
 @router.get("/me")
-def get_me(current_user: User = Depends(get_current_user)):
+def get_current_user_profile(current_user: User = Depends(get_current_user)):
+    """Get current logged-in user profile"""
     return {
-        "id": current_user.id,
-        "role": current_user.role,
-        "first_name": current_user.first_name or current_user.full_name.split(" ")[0],
-        "last_name": current_user.last_name or (" ".join(current_user.full_name.split(" ")[1:]) if len(current_user.full_name.split(" ")) > 1 else ""),
-        "email": current_user.email,
-        "phone": current_user.phone_number,
-        "region": current_user.region,
-        "hopital_id": current_user.hopital_id,
-        "latitude": getattr(current_user.donor_profile, "latitude", None) if current_user.donor_profile else None,
-        "longitude": getattr(current_user.donor_profile, "longitude", None) if current_user.donor_profile else None
+        "success": True,
+        "data": {
+            "id": current_user.id,
+            "email": current_user.email,
+            "full_name": current_user.full_name,
+            "phone_number": current_user.phone_number,
+            "role": current_user.role,
+            "created_at": current_user.created_at.isoformat()
+        },
+        "message": "Profile retrieved successfully"
     }
-
-from pydantic import BaseModel
-from typing import Optional
-
-class ProfileUpdate(BaseModel):
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    phone: Optional[str] = None
-    birth_date: Optional[str] = None
-    blood_type: Optional[str] = None
-    wilaya: Optional[str] = None
-
-@router.patch("/profile")
-def update_profile(
-    profile_data: ProfileUpdate,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session)
-):
-    if profile_data.first_name is not None:
-        current_user.first_name = profile_data.first_name
-    if profile_data.last_name is not None:
-        current_user.last_name = profile_data.last_name
-    if profile_data.phone is not None:
-        current_user.phone_number = profile_data.phone
-    if profile_data.wilaya is not None:
-        current_user.region = profile_data.wilaya
-    
-    # If they have a donor profile, update their blood_type
-    if profile_data.blood_type is not None:
-        if current_user.donor_profile:
-            current_user.donor_profile.blood_type = profile_data.blood_type
-            session.add(current_user.donor_profile)
-        
-    # Re-calculate full_name if first_name/last_name are modified
-    first = current_user.first_name or ""
-    last = current_user.last_name or ""
-    if first or last:
-        current_user.full_name = f"{first} {last}".strip()
-        
-    session.add(current_user)
-    session.commit()
-    session.refresh(current_user)
-    
-    return {
-        "id": current_user.id,
-        "role": current_user.role,
-        "first_name": current_user.first_name or current_user.full_name.split(" ")[0],
-        "last_name": current_user.last_name or (" ".join(current_user.full_name.split(" ")[1:]) if len(current_user.full_name.split(" ")) > 1 else ""),
-        "email": current_user.email,
-        "phone": current_user.phone_number,
-        "region": current_user.region,
-        "hopital_id": current_user.hopital_id,
-        "latitude": getattr(current_user.donor_profile, "latitude", None) if current_user.donor_profile else None,
-        "longitude": getattr(current_user.donor_profile, "longitude", None) if current_user.donor_profile else None
-    }
-

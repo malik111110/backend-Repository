@@ -4,13 +4,13 @@ from typing import List
 
 from app.database import get_session
 from app.auth import get_current_user
-from app.models import User, BloodRequest, BloodRequestCreate, BloodRequestRead, DonorProfile
+from app.models import User, BloodRequest, BloodRequestCreate, DonorProfile
 from app.scheduler import match_and_schedule_for_request, is_blood_compatible, calculate_distance, is_donor_eligible
 from app.config import settings
 
 router = APIRouter(prefix="/api/requests", tags=["Blood Requests"])
 
-@router.post("/create", response_model=BloodRequestRead, status_code=status.HTTP_201_CREATED)
+@router.post("/create", status_code=status.HTTP_201_CREATED)
 def create_blood_request(
     request_data: BloodRequestCreate,
     background_tasks: BackgroundTasks,
@@ -54,7 +54,11 @@ def create_blood_request(
     if db_request.urgency_level in ["high", "critical"]:
         background_tasks.add_task(run_immediate_matching, db_request.id)
         
-    return db_request
+    return {
+        "success": True,
+        "data": db_request,
+        "message": "Blood request created successfully"
+    }
 
 def run_immediate_matching(request_id: str):
     """Background task to instantly run matching for a high-urgency request."""
@@ -66,14 +70,18 @@ def run_immediate_matching(request_id: str):
         if req and req.status in ["pending", "partially_fulfilled"]:
             match_and_invite_for_request(sess, req)
 
-@router.get("/my-requests", response_model=List[BloodRequestRead])
+@router.get("/my-requests")
 def get_my_requests(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
     statement = select(BloodRequest).where(BloodRequest.created_by_id == current_user.id)
     requests = session.exec(statement).all()
-    return requests
+    return {
+        "success": True,
+        "data": requests,
+        "message": "My requests loaded successfully"
+    }
 
 @router.get("/{request_id}/eligible-donors-count")
 def get_eligible_donors_count_for_request(
@@ -116,9 +124,13 @@ def get_eligible_donors_count_for_request(
     nearby_compatible_count = len(matches)
                 
     return {
-        "request_id": request_id,
-        "blood_type": req.blood_type,
-        "total_compatible_eligible_donors": compatible_count,
-        "nearby_compatible_eligible_donors": nearby_compatible_count,
-        "search_radius_km": settings.MATCH_RADIUS_KM
+        "success": True,
+        "data": {
+            "request_id": request_id,
+            "blood_type": req.blood_type,
+            "total_compatible_eligible_donors": compatible_count,
+            "nearby_compatible_eligible_donors": nearby_compatible_count,
+            "search_radius_km": settings.MATCH_RADIUS_KM
+        },
+        "message": "Eligible compatible donors count calculated successfully"
     }

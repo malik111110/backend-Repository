@@ -129,23 +129,23 @@ def test_invitation_cascade_lifecycle():
         
         # 5. Test Accept Response & Complete Schedule Booking
         # Donor 3 accepts the invitation
-        resp_accept = respond_to_invitation(
+        resp = respond_to_invitation(
             invitation_id=inv_d3.id,
             response=InvitationResponse(accepted=True),
             donor=d3,
             session=session
         )
         
-        assert "accepted successfully" in resp_accept["message"]
+        assert "accepted successfully" in resp["message"]
         
         session.refresh(inv_d3)
         assert inv_d3.status == "accepted"
         
         # Check that a schedule was created and donor availability toggled to False
-        schedule = resp_accept["schedule"]
-        assert schedule.donor_id == d3.id
-        assert schedule.request_id == req.id
-        assert schedule.status == "scheduled"
+        schedule = resp["data"]["schedule"]
+        assert schedule["donor_id"] == d3.id
+        assert schedule["request_id"] == req.id
+        assert schedule["status"] == "scheduled"
         
         session.refresh(d3)
         assert d3.is_available is False
