@@ -34,7 +34,7 @@ def register(user_data: UserCreate, session: Session = Depends(get_session)):
             
     # Create user
     # If the email is admin@amal.org, automatically make them an admin for easy setup
-    role = "admin" if user_data.email.lower() == "admin@amal.org" else "user"
+    role = "admin_hopital" if user_data.email.lower() == "admin@amal.org" else "user"
     
     db_user = User(
         email=user_data.email,

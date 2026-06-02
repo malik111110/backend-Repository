@@ -34,7 +34,7 @@ router = APIRouter(prefix="/api/admin", tags=["Admin Dashboard"], dependencies=[
 def get_dashboard_stats(session: Session = Depends(get_session)):
     # 1. Total users and role counts
     total_users = session.query(User).count()
-    admins_count = session.query(User).filter(User.role.in_(["admin", "super_admin", "admin_hopital"])).count()
+    admins_count = session.query(User).filter(User.role == "admin_hopital").count()
     
     # 2. Donors count and availability
     total_donors = session.query(DonorProfile).count()

@@ -89,7 +89,7 @@ def get_eligible_donors_count_for_request(
         )
         
     # Ensure current user owns the request or is admin
-    if req.created_by_id != current_user.id and current_user.role != "admin":
+    if req.created_by_id != current_user.id and current_user.role != "admin_hopital":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to view details for this request."
