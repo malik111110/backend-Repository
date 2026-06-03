@@ -7,10 +7,61 @@ from datetime import date, datetime
 
 from app.database import get_session
 from app.auth import get_current_admin
-from app.models import User, DonorProfile, BloodRequest, DonationSchedule, TeamMember, TeamMemberCreate
+from app.models import User, DonorProfile, BloodRequest, DonationSchedule, TeamMember, TeamMemberCreate, Hospital
 from app.scheduler import run_auto_scheduling
 
 router = APIRouter(prefix="/api/admin", tags=["Admin Dashboard"], dependencies=[Depends(get_current_admin)])
+
+@router.get("/hospitals")
+def list_hospitals(session: Session = Depends(get_session)):
+    hospitals = session.exec(select(Hospital)).all()
+    return {
+        "success": True,
+        "data": hospitals,
+        "message": "Hospitals loaded successfully"
+    }
+
+class HospitalAdminCreate(BaseModel):
+    first_name: str
+    last_name: str
+    email: str
+    password: str
+    hopital_id: str
+
+@router.post("/create-hospital-admin")
+def create_hospital_admin(
+    admin_data: HospitalAdminCreate,
+    session: Session = Depends(get_session)
+):
+    from app.auth import get_password_hash
+    # Check if user already exists
+    statement = select(User).where(User.email == admin_data.email)
+    existing_user = session.exec(statement).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    
+    # Create hospital admin user
+    db_user = User(
+        email=admin_data.email,
+        full_name=f"{admin_data.first_name} {admin_data.last_name}",
+        phone_number="0500000000",
+        hashed_password=get_password_hash(admin_data.password),
+        role="admin_hopital",
+        first_name=admin_data.first_name,
+        last_name=admin_data.last_name,
+        hopital_id=admin_data.hopital_id
+    )
+    session.add(db_user)
+    session.commit()
+    session.refresh(db_user)
+    return {
+        "success": True,
+        "data": db_user,
+        "message": "Hospital admin created successfully"
+    }
 
 @router.get("/dashboard")
 def get_dashboard_stats(session: Session = Depends(get_session)):
