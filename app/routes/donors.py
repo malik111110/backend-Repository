@@ -53,9 +53,27 @@ def get_my_appointments(
 ):
     statement = select(DonationSchedule).where(DonationSchedule.donor_id == donor.id)
     appointments = session.exec(statement).all()
+    enriched = []
+    for app in appointments:
+        hospital_name = "Amal Donor Center"
+        hospital_address = "Didouche Mourad St, Algiers"
+        if app.request_id:
+            req = session.get(BloodRequest, app.request_id)
+            if req:
+                hospital_name = req.hospital_name
+                hospital_address = req.hospital_name
+        enriched.append({
+            "id": app.id,
+            "hospitalName": hospital_name,
+            "hospitalAddress": hospital_address,
+            "date": app.scheduled_time.date().isoformat() if app.scheduled_time else None,
+            "timeSlot": app.scheduled_time.strftime("%I:%M %p") if app.scheduled_time else None,
+            "status": app.status.upper(),
+            "unitsDonated": app.units_donated
+        })
     return {
         "success": True,
-        "data": appointments,
+        "data": enriched,
         "message": "My appointments loaded successfully"
     }
 
@@ -138,9 +156,39 @@ def get_my_invitations(
         Invitation.status.in_(["pending", "queued"])
     )
     invitations = session.exec(statement).all()
+    enriched = []
+    for inv in invitations:
+        req = session.get(BloodRequest, inv.request_id)
+        if req:
+            # Get count of schedules for this request to set unitsCollected
+            schedules_count = session.query(DonationSchedule).filter(
+                DonationSchedule.request_id == req.id,
+                DonationSchedule.status.in_(["scheduled", "completed"])
+            ).count()
+            
+            enriched.append({
+                "id": inv.id,
+                "requestId": inv.request_id,
+                "expiresAt": inv.expires_at.isoformat(),
+                "status": inv.status.upper(),
+                "request": {
+                    "id": req.id,
+                    "hospitalName": req.hospital_name,
+                    "hospitalAddress": req.hospital_name,
+                    "latitude": req.hospital_latitude,
+                    "longitude": req.hospital_longitude,
+                    "bloodType": req.blood_type,
+                    "urgency": req.urgency_level.upper(),
+                    "patientCondition": "Emergency Blood Request Compatibility Match",
+                    "unitsRequired": req.required_units,
+                    "unitsCollected": schedules_count,
+                    "createdAt": req.created_at.isoformat(),
+                    "distanceKm": 1.2
+                }
+            })
     return {
         "success": True,
-        "data": invitations,
+        "data": enriched,
         "message": "My invitations loaded successfully"
     }
 
@@ -330,3 +378,26 @@ def submit_pre_screen_questionnaire(
             },
             "message": "Pre-screening passed successfully. Health clearance token generated."
         }
+
+@router.patch("/appointments/{appointment_id}/cancel")
+def cancel_appointment(
+    appointment_id: str,
+    donor: DonorProfile = Depends(get_current_donor_profile),
+    session: Session = Depends(get_session)
+):
+    appointment = session.get(DonationSchedule, appointment_id)
+    if not appointment or appointment.donor_id != donor.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Appointment not found"
+        )
+    
+    appointment.status = "cancelled"
+    donor.is_available = True
+    session.add(appointment)
+    session.add(donor)
+    session.commit()
+    return {
+        "success": True,
+        "message": "Appointment cancelled successfully"
+    }

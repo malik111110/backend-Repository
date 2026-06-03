@@ -110,6 +110,10 @@ def get_current_user_profile(current_user: User = Depends(get_current_user)):
             "full_name": current_user.full_name,
             "phone_number": current_user.phone_number,
             "role": current_user.role,
+            "first_name": current_user.first_name,
+            "last_name": current_user.last_name,
+            "region": current_user.region,
+            "hopital_id": current_user.hopital_id,
             "created_at": current_user.created_at.isoformat()
         },
         "message": "Profile retrieved successfully"

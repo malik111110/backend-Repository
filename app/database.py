@@ -45,6 +45,19 @@ def init_db():
                     )
                     hospitals_to_insert.append(hospital)
                 
+                # Append developer test hospital
+                dev_hospital = Hospital(
+                    name="EHU USTO - 1 Novembre",
+                    address="USTO, Oran",
+                    region="Oran",
+                    phone="041000000",
+                    latitude=35.6986,
+                    longitude=-0.6318,
+                    osm_id="dev-chu-1",
+                    facility_type="hospital"
+                )
+                hospitals_to_insert.append(dev_hospital)
+                
                 session.add_all(hospitals_to_insert)
                 session.commit()
                 print(f"Successfully seeded {len(hospitals_to_insert)} hospitals.")
